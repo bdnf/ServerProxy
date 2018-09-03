@@ -1,0 +1,26 @@
+version: '3'
+services:
+
+    server:
+
+      build:
+        context: WebServer/.
+        dockerfile: Dockerfile
+      image: rust_serv
+      ports:
+        - "8000:8000"
+      networks:
+            - backend
+
+    proxy:
+      build:
+        context: WebProxy/.
+        dockerfile: Dockerfile
+      image: rust_proxy
+      ports:
+        - "8888:8888"
+      networks:
+            - backend
+
+networks:
+    backend: {}

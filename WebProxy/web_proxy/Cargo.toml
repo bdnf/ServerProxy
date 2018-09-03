@@ -1,0 +1,8 @@
+[package]
+name = "web_proxy"
+version = "0.1.0"
+authors = ["Oleh Bodunov <oleg.bdnf@gmail.com>"]
+
+[dependencies]
+regex = "1.0.4"
+time = "0.1.32"

@@ -2,6 +2,7 @@ extern crate regex;
 use std::io::prelude::*;
 use std::net::TcpStream;
 use std::net::TcpListener;
+use std::io::{BufReader, BufWriter, Write, BufRead};
 use std::fs::File;
 use regex::Regex;
 
@@ -10,6 +11,14 @@ use time::*;
 
 mod threadpool;
 use threadpool::ThreadPool;
+
+extern crate futures;
+extern crate hyper;
+extern crate tokio_core;
+
+use futures::{Future};
+use hyper::{Client, Uri};
+use tokio_core::reactor::Core;
 
 enum Verb {
     GET,
@@ -88,6 +97,7 @@ fn read_request(stream: &mut TcpStream) -> Request{
 
 fn log_request(request: &Request) {
     let t = now();
+    print!("{:?}", t);
     println!("[{}-{:02}-{:02} {:02}:{:02}:{:02}.{:04}] {} {} \"/{}\"",
              t.tm_year + 1900,
              t.tm_mon + 1,
@@ -117,18 +127,62 @@ fn send_request(request: &Request, stream: &mut TcpStream) {
 }
 
 fn handle_connection(mut incoming_stream: TcpStream) {
-    let request = read_request(&mut incoming_stream);
-    log_request(&request);
 
-    let address_string = format!("{}:{}", request.hostname, 8888);
-    let mut server_stream = TcpStream::connect(&*address_string).unwrap();
-    send_request(&request, &mut server_stream);
+    //https://stackoverflow.com/questions/50312240/get-request-to-a-website-with-vanilla-rust
 
-    let mut content_buffer: Vec<u8> = Vec::new();
-    let content_size = server_stream.read_to_end(&mut content_buffer).unwrap();
-    incoming_stream.write(&content_buffer);
+    //let request = read_request(&mut incoming_stream);
+    //log_request(&request);
+    println!("Local port addr equal {:?}", incoming_stream.local_addr().unwrap().port() );
+    let request_ip = incoming_stream.local_addr().unwrap().ip();
+    let request_port = incoming_stream.local_addr().unwrap().port();
 
-     // let mut req_buffer = [0; 512];
+    let address_string = format!("{}:{}", request_ip, 8000);
+    print!("{:?}", &address_string );
+    let mut server_stream = TcpStream::connect(&address_string).unwrap();
+    println!("{:?}",&server_stream );
+
+    // println!("Incoming stream ..." );
+    // let mut reader = BufReader::new(&incoming_stream);
+    // let mut response = String::new();
+    // reader.read_line(&mut response).expect("Could not read");
+    // println!("Player received >{}<", response.trim());
+    //
+    // let mut writer = BufWriter::new(&incoming_stream);
+    // let req = writer.write_all("NAME\n".as_bytes()).expect("Could not write");
+    // println!("request = {:?}", req);
+
+
+    //handle_client(server_stream);
+
+
+    let mut request_data = String::new();
+    request_data.push_str("GET / HTTP/1.0");
+    request_data.push_str("\r\n");
+    request_data.push_str("Host: 127.0.0.1");
+    request_data.push_str("\r\n");
+    request_data.push_str("Connection: close"); // <== Here!
+    request_data.push_str("\r\n");
+    request_data.push_str("\r\n");
+
+    println!("request_data = {:?}", &request_data);
+    let request = server_stream.write_all(request_data.as_bytes()).unwrap();
+    println!("request = {:?}", request);
+
+    let mut buf = String::new();
+    let result = server_stream.read_to_string(&mut buf).unwrap();
+    println!("result = {}", result);
+    println!("buf = {}", buf);
+
+
+    //send_request(&request, &mut server_stream);
+    //
+    // let mut content_buffer: Vec<u8> = Vec::new();
+    // let content_size = server_stream.read_to_end(&mut content_buffer).unwrap();
+    // print!("{:?}", &content_buffer);
+    // incoming_stream.write(&content_buffer);
+
+      //let mut req_buffer = [0; 512];
+      //let mut req_buffer = incoming_stream;
      // stream.read(&mut req_buffer).unwrap();
      //
      // let get = b"GET / HTTP/1.1\r\n";
@@ -148,19 +202,64 @@ fn handle_connection(mut incoming_stream: TcpStream) {
      // stream.flush().unwrap();
 }
 
+fn print_req(){
+    let mut core = Core::new().unwrap();
+
+      let client = Client::new(&core.handle());
+
+      let url : Uri = "http://httpbin.org/response-headers?foo=bar".parse().unwrap();
+      assert_eq!(url.query(), Some("foo=bar"));
+
+      let request = client.get(url)
+          .map(|res| {
+              assert_eq!(res.status(), hyper::Ok);
+          });
+
+      // request is a Future, futures are lazy, so must explicitly run
+      //core.run(request).unwrap();
+}
+
+fn handle_client(stream: TcpStream) {
+        println!("Client connected");
+
+        let mut writer = BufWriter::new(&stream);
+        writer.write_all("Red\n".as_bytes()).expect("could not write");
+        writer.flush().expect("could not flush");
+
+        let mut reader = BufReader::new(&stream);
+        let mut response = String::new();
+        reader.read_line(&mut response).expect("could not read");
+        println!("Server received {}", response);
+        print!("{:?}",reader );
+    }
+
 fn main() {
-    let listener = TcpListener::bind("127.0.0.1:8000").unwrap();
-    let pool = ThreadPool::new(4);
+    let addr: String = "127.0.0.1:8888".parse().unwrap();
+    let listener = TcpListener::bind(&addr).unwrap();
+    //let pool = ThreadPool::new(4);
+
+    println!("Listening on 127.0.0.1:{}",
+             &listener.local_addr().unwrap().port());
+
 
     for stream in listener.incoming() {
+        //println!("Listening on 127.0.0.1");
+
      //let stream = stream.unwrap();
+
+     //handle_connection(stream);
      match stream {
-                 Err(_) => { /* connection failed */ }
+
                  Ok(stream) => {
-                     pool.execute(|| {
+                            println!("Current stream is {:?}",&stream );
                             handle_connection(stream);
-                     });
+                            //handle_client(stream);
+                            //print_req();
+                             println!("no err");
+
                  }
+                 Err(_) => { /* connection failed */
+                  print!("Some err");}
                 }
 
     }

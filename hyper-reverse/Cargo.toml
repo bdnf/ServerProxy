@@ -1,0 +1,21 @@
+[package]
+name = "hyper-reverse"
+version = "0.1.0"
+authors = ["Oleh Bodunov <oleg.bdnf@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+http = "0.1"
+hyper-reverse-proxy = "0.2.1"
+hyper = "0.11"
+lazy_static = "0.2"
+futures = "0.1.14"
+unicase = "2.0.0"
+tokio = "0.1"
+tokio-core = "0.1.8"
+tokio-io = "0.1.6"
+bytes = "0.4.6"
+tokio-tls = { version = "0.2", optional=true }
+hyper-tls = { version = "0.3", optional=true }
+native-tls = { version = "0.2", optional=true }
+typed-headers = "0.1"

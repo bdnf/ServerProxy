@@ -18,10 +18,12 @@ fn main() {
 
     let in_addr = ([127, 0, 0, 1], 30001).into();
     let server_addr: SocketAddr = ([127, 0, 0, 1], 8000).into();
+    let backup_addr: SocketAddr = ([127, 0, 0, 1], 1331).into();
 
     let client_main = Client::new();
 
     let server_addr_clone = server_addr.clone();
+    let backup_addr_clone = backup_addr.clone();
     // new_service is run for each connection, creating a 'service'
     // to handle requests for that specific connection.
     let new_service = move || {
@@ -30,7 +32,7 @@ fn main() {
         // `service_fn_ok` is a helper to convert a function that
         // returns a Response into a `Service`.
         service_fn(move |mut req| {
-            let uri_string = format!("http://{}/{}",
+            let uri_string = format!("http://{}{}",
                 server_addr_clone,
                 req.uri().path_and_query().map(|x| x.as_str()).unwrap_or(""));
             let uri = uri_string.parse().unwrap();
@@ -38,8 +40,28 @@ fn main() {
             //println!("{:?}", req);
             //println!("{:?}", req.method());
             match req.method() {
-                &Method::POST => {println!("{:?}", req.method()); client.request(req)},
-                &Method::GET => {client.request(req)},
+                &Method::POST => {
+                    //println!("{:?}", req.method());
+                    //client.request(req);
+                    let uri_string = format!("http://{}{}",
+                        backup_addr_clone,
+                        req.uri().path_and_query().map(|x| x.as_str()).unwrap_or(""));
+                    let uri = uri_string.parse().unwrap();
+
+
+                    let (mut parts, body) = req.into_parts();
+                    parts.method = Method::GET;
+                    parts.uri = uri;
+                    let request = Request::from_parts(parts, body);
+
+
+                    println!("{:?}", request);
+                    client.request(request)
+                },
+                &Method::GET => {
+                    println!("{:?}", req);
+                    client.request(req)
+                    },
                 _ => {
                     // Return 404 not found response.
                     let body = Body::from(NOTFOUND);

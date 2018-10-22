@@ -1,8 +1,16 @@
 [package]
-name = "hyper-proxy2"
+name = "Serverproxy"
 version = "0.1.0"
 authors = ["Oleh Bodunov <oleg.bdnf@gmail.com>"]
 edition = "2018"
+
+[[bin]]
+name = "server"
+path = "src/hyper-server/main.rs"
+
+[[bin]]
+name = "proxy"
+path = "src/hyper-proxy/main.rs"
 
 [dependencies]
 bytes = "0.4.4"

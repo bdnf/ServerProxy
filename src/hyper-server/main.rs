@@ -20,6 +20,7 @@ static NOTNUMERIC: &[u8] = b"Number field is not numeric";
 fn param_example(req: Request<Body>) -> Box<Future<Item=Response<Body>, Error=hyper::Error> + Send> {
     match (req.method(), req.uri().path()) {
         (&Method::GET, "/") | (&Method::GET, "/post") => {
+            println!("{:?}", req);
             Box::new(future::ok(Response::new(INDEX.into())))
         },
         (&Method::POST, "/post") => {

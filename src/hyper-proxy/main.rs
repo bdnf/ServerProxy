@@ -54,28 +54,24 @@ fn response_examples(mut req: Request<Body>, client: &Client<HttpConnector>, ser
                let body = Body::from(INDEX);
                Box::new(future::ok(Response::new(body)))
            },
-           (&Method::GET, "/post") => {
-               // build the request
-               let req = Request::builder()
-                   .method(Method::GET)
-                   .uri(uri_string)
-                   //.header("","hello")
-                   .body(LOWERCASE.into())
-                   .unwrap();
-                println!("{:?}",req.headers() );
+           (&Method::GET, "/test") => {
+               // build the request and change the path
+               let request_uri = req.uri();
+               let upstream_uri = format!("http://{}:{}{}",
+                   req.uri().host().unwrap(),
+                   req.uri().port().unwrap(),
+                   "/"
+                   ).parse().unwrap();
+
+                println!("{:?}", upstream_uri);
+                *req.uri_mut() = upstream_uri;
+
+
+                println!("{:?}", req);
                 let web_res_future = client.request(req);
 
-                Box::new(web_res_future.map(|web_res| {
-                    // return the response that came from the web api and the original text together
-                    // to show the difference
-                    let body = Body::wrap_stream(web_res.into_body().map(|b| {
-                        Chunk::from(format!("<b>before</b>: {}<br><b>after</b>: {}",
-                                            std::str::from_utf8(LOWERCASE).unwrap(),
-                                            std::str::from_utf8(&b).unwrap()))
-                    }));
 
-                    Response::new(body)
-                }))
+                Box::new(web_res_future)
 
            },
            (&Method::GET, "/test.html") => {
@@ -198,32 +194,83 @@ fn response_examples(mut req: Request<Body>, client: &Client<HttpConnector>, ser
                  .unwrap()
              ))
            },
-           (&Method::GET, value) => {
+           (&Method::GET, "/api/auth/signin") => {
+               Box::new(client.request(req))
+           },
+           (&Method::POST, "/api/auth/signin") => {
+               Box::new(client.request(req))
+           },
+           //matching complex routes
+           (&Method::POST, value) => {
+
                let data: Vec<&str> = value.split("/").skip(1).collect();
                //let data = vec!["user", "pass"];
-               let res = match serde_json::to_string(&data) {
-                   Ok(json) => {
-                       // return a json response
-                       Response::builder()
-                           .header(header::CONTENT_TYPE, "application/json")
-                           .body(Body::from(json))
-                           .unwrap()
-                   }
-                   // This is unnecessary here because we know
-                   // this can't fail. But if we were serializing json that came from another
-                   // source we could handle an error like this.
-                   Err(e) => {
-                       eprintln!("serializing json: {}", e);
+               //let index: Option<usize> = Some(data.iter().position(|&x| x == "user").unwrap());
 
-                       Response::builder()
-                           .status(StatusCode::INTERNAL_SERVER_ERROR)
-                           .body(Body::from("Internal Server Error"))
-                           .unwrap()
-                   }
-               };
+               if data.len() >=3 {
+               match (data[0], data[1], data[2])  {
+                    ("api","users",_) => {
+                        println!("{:?}", req);
+                        Box::new(client.request(req))},
 
-               Box::new(future::ok(res))
-           }
+                    (_,_,_) => {
+                        let idx = match data.iter().position(|&x| x == "user" || x =="users") {
+                            Some(index) => {
+
+                                println!("You probably a {:?} with id: {:?}", data[index], data[index+1] );
+                                let s = format!("You probably trying {:?} with id: {:?}" , data[index].to_string(), data[index+1].to_string());
+                                &data[index..=index+1]
+                            },
+                            None => &data,
+                        };
+
+                        let res = match serde_json::to_string(idx) {
+
+                            Ok(ref js) if idx.len() == 2 =>
+                             Response::builder()
+                                .header(header::CONTENT_TYPE, "application/json")
+                                .body(Body::from(format!("You probably a {:?} with id: {:?}" , idx[0].to_string(), idx[1].to_string())))
+                                .unwrap()
+                                ,
+                                Ok(ref json) if idx.len() > 2 =>
+                                    // return a json response
+                                    Response::builder()
+                                        .header(header::CONTENT_TYPE, "application/json")
+                                        .body(Body::from(json.clone()))
+                                        .unwrap()
+                                        ,
+
+
+                             Ok(_) =>
+                                 Response::builder()
+                                    .header(header::CONTENT_TYPE, "application/json")
+                                    .body(Body::from(format!("You probably a requested a /")))
+                                    .unwrap()
+                                    ,
+                            // This is unnecessary here because we know
+                            // this can't fail. But if we were serializing json that came from another
+                            // source we could handle an error like this.
+                            Err(e) => {
+                                eprintln!("serializing json: {}", e);
+
+                                Response::builder()
+                                    .status(StatusCode::INTERNAL_SERVER_ERROR)
+                                    .body(Body::from("Internal Server Error"))
+                                    .unwrap()
+                            }
+                        };
+
+                        Box::new(future::ok(res))
+                    }
+               }
+
+           }  else  {
+                Box::new(future::ok(Response::builder()
+                .status(StatusCode::NOT_FOUND)
+                .body(Body::from("Error reaching un-existing route"))
+                .unwrap()))
+            }
+       }
            _ => {
                // Return 404 not found response.
                let body = Body::from(NOTFOUND);
@@ -233,8 +280,9 @@ fn response_examples(mut req: Request<Body>, client: &Client<HttpConnector>, ser
                                             .unwrap()))
            }
        }
+   }
 
-}
+
 
 fn main() {
     let user = models::User {

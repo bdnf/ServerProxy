@@ -17,29 +17,43 @@ use std::net::SocketAddr;
 extern crate futures;
 use futures::{future, Future, Stream};
 //use futures::future;
-mod models;
+
 
 use std::collections::HashMap;
 
 extern crate url;
 use url::form_urlencoded;
 
-//static INDEX: &[u8] = b"<html><body><form action=\"post\" method=\"post\">Name: <input type=\"text\" name=\"name\"><br>Number: <input type=\"text\" name=\"number\"><br><input type=\"submit\"></body></html>";
-static NOTFOUND: &[u8] = b"Not Found";
-//static URL: &str = "http://127.0.0.1:1337/web_api";
-static INDEX: &[u8] = b"<a href=\"test.html\">test.html</a>";
-static LOWERCASE: &[u8] = b"i am a lower case string";
-static MISSING: &[u8] = b"Missing field";
-static NOTNUMERIC: &[u8] = b"Number field is not numeric";
+extern crate jsonwebtoken as jwt;
+use jsonwebtoken::{encode, decode,decode_header, Header, Algorithm, Validation};
+use jsonwebtoken::errors::{ErrorKind};
 
-#[derive(Deserialize, Debug)]
+
+
+#[derive(Serialize, Deserialize, Debug)]
 struct User {
     id: String,
-    name: String,
+    username: String,
+    profileAccessLevel: String
 }
+#[derive(Serialize, Deserialize, Debug)]
+struct User2 {
+    username: String
+}
+
+
+mod models;
+mod parser;
+//use crate::parser::resources::INDEX;
+use crate::parser::resources:: *;
+//mod resources;
+
+
 
 fn response_examples(mut req: Request<Body>, client: &Client<HttpConnector>, server_addr: SocketAddr)
     -> Box<Future<Item=Response<Body>, Error=hyper::Error> + Send> {
+
+    let key: String = "jhfdlksjlkfjlksdjfljsdlj".to_owned(); //jwt token secret key
 
     let server_addr_clone = server_addr.clone();
     let uri_string = format!("http://{}{}",
@@ -48,9 +62,14 @@ fn response_examples(mut req: Request<Body>, client: &Client<HttpConnector>, ser
     let uri = uri_string.parse().unwrap();
     *req.uri_mut() = uri;
 
+    let new_res = parser::match_request(&req);
+    //new_res
+
+
+    //matching against specific routes
     match (req.method(), req.uri().path()) {
 
-           (&Method::GET, "/") | (&Method::GET, "/index.html") => {
+           (&Method::GET, HOMEPAGE) | (&Method::GET, "/index.html") => {
                let body = Body::from(INDEX);
                Box::new(future::ok(Response::new(body)))
            },
@@ -195,25 +214,69 @@ fn response_examples(mut req: Request<Body>, client: &Client<HttpConnector>, ser
              ))
            },
            (&Method::GET, "/api/auth/signin") => {
+                //let data: Vec<&str> = value.split("/").skip(1).collect();
+
                Box::new(client.request(req))
+
            },
            (&Method::POST, "/api/auth/signin") => {
+
+               println!("{:?}", req.headers());
+
+           /*
+               let newBody = req.body_mut().map_err(|_| ()).fold(vec![], |mut acc, chunk| {
+                 acc.extend_from_slice(&chunk);
+                 Ok(acc)
+               }).and_then(|v| String::from_utf8(v).map_err(|_| ()).wait().unwrap());
+
+               Box::new(future::ok(Response::builder()
+                   .header(header::CONTENT_TYPE, "application/json")
+                   .body(Body::from(newBody))
+                   .unwrap()
+               ))
+           */
+
+
                Box::new(client.request(req))
            },
            //matching complex routes
-           (&Method::POST, value) => {
-
+           (&Method::GET, value) => {
+               println!("{:?}", req.headers().get("authorization"));
+               println!("{:?}", req.body());
                let data: Vec<&str> = value.split("/").skip(1).collect();
                //let data = vec!["user", "pass"];
                //let index: Option<usize> = Some(data.iter().position(|&x| x == "user").unwrap());
 
-               if data.len() >=3 {
-               match (data[0], data[1], data[2])  {
-                    ("api","users",_) => {
+               if data.len() >=2 {
+               match (data[0], data[1])  {
+                    ("api","users",) => {
                         println!("{:?}", req);
                         Box::new(client.request(req))},
+                    ("api","messages",) => {
+                        println!("{:?}", req.headers().get("authorization"));
+                        let mut token = req.headers().get("authorization").unwrap().to_str();
 
-                    (_,_,_) => {
+                        match token {
+                            Ok(x) => {
+                                // HMAC using SHA-256
+                                let auth_header: Vec<&str> = x.split_whitespace().collect();
+                                println!("token for decoding is{}", auth_header[1]);
+                                let token_data = match decode::<User>(auth_header[1], key.as_ref(), &Validation::new(Algorithm::HS256)) {
+                                    Ok(c) => c,
+                                    Err(err) => match *err.kind() {
+                                        ErrorKind::InvalidToken => panic!(), // Example on how to handle a specific error
+                                        _ => panic!()
+                                    }
+                                };
+
+                                println!("Token data is{:?}", token_data);
+                            }
+                            _ => ()
+                        };
+Box::new(client.request(req))
+                    },
+
+                    (_,_) => {
                         let idx = match data.iter().position(|&x| x == "user" || x =="users") {
                             Some(index) => {
 
@@ -285,17 +348,26 @@ fn response_examples(mut req: Request<Body>, client: &Client<HttpConnector>, ser
 
 
 fn main() {
-    let user = models::User {
-        name: "Andre".to_string(),
-        group: Some(models::Group {
-            group_name: "Admin".to_string(),
-            allowed_verbs: vec!["GET".to_string(), "POST".to_string(), "DELETE".to_string()],
-        }),
-        id: 10001,
-    };
+    // let user = models::User {
+    //     name: "Andre".to_string(),
+    //     group: Some(models::Group {
+    //         group_name: "Admin".to_string(),
+    //         allowed_verbs: vec!["GET".to_string(), "POST".to_string(), "DELETE".to_string()],
+    //     }),
+    //     id: 10001,
+    // };
+    // let jjson = serde_json::to_string(&user).expect("Couldn't serialize config");
+    // println!("{}", jjson);
 
-    let jjson = serde_json::to_string(&user).expect("Couldn't serialize config");
-    println!("{}", jjson);
+    //ROUTES.iter().map(|&x| { print!("{:?}", x );});
+    for (i,r) in ROUTES.iter().enumerate() {
+        print!("{:?} ", r );
+
+    }
+
+    //println!("{}", ROUTES.iter().fold(String::new(), |acc, &arg| acc + arg));
+
+
 
     pretty_env_logger::init();
 
@@ -376,6 +448,25 @@ fn main() {
     let server = Server::bind(&in_addr)
         .serve(new_service)
         .map_err(|e| eprintln!("server error: {}", e));
+
+
+        let my_claims = User2 {
+
+              username: "testname8".to_owned(),
+
+          };
+          /*
+         ISSUE: panicked at 'called `Result::unwrap()` on an `Err` value: Error(ExpiredSignature)'
+        let key = "secret".to_owned();
+
+        let token = encode(&Header::default(), &my_claims, key.as_ref()).unwrap();
+        println!("{:?}", token);
+
+        let token_data = decode::<User2>(&token, key.as_ref(), &Validation::default()).unwrap();
+        //let token_data = decode_header(&token);
+        println!("{:?}", token_data);
+        //println!("{:?}", token_data.header);
+        */
 
     println!("Listening on http://{}", in_addr);
     println!("Proxying on http://{}", server_addr);

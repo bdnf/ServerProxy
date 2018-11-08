@@ -8,19 +8,22 @@ use std::collections::HashMap;
 extern crate url;
 use url::form_urlencoded;
 
+extern crate base64;
+
 pub mod resources;
 use crate::models:: *;
 use crate::parser::resources:: *;
 //use crate::parser::resources::NOTFOUND;
 
+
 pub fn match_request(mut req: Request<Body>, client: &Client<HttpConnector>) -> Box<Future<Item=Response<Body>, Error=hyper::Error> + Send> {
 
     // check if req.uri().path() is in ROUTES
     if ROUTES.contains(&req.uri().path()) {
-    		println!("The pet {} is known.", &req.uri().path());
+    		println!("The route {} is known.", &req.uri().path());
 		}
     // else {
-    //     println!("The pet {} is not known.", &req.uri().path());
+    //     println!("The route {} is not known.", &req.uri().path());
     //     return Box::new(future::ok(Response::builder()
     //                                  .status(StatusCode::NOT_FOUND)
     //                                  .body(Body::from(NOTFOUND))
@@ -30,9 +33,92 @@ pub fn match_request(mut req: Request<Body>, client: &Client<HttpConnector>) -> 
     match (req.method(), req.uri().path()) {
 
            (&Method::GET, HOMEPAGE) | (&Method::GET, "/index.html") => {
-               let body = Body::from(INDEX);
-               Box::new(future::ok(Response::new(body)))
+               //just redirecting to server
+               Box::new(client.request(req))
+
            },
+           (&Method::POST, "/uppercase") => {
+            //Uppercases the body and returns it back.
+            //Prints the body
+            let body = Body::wrap_stream(req.into_body().map(|chunk| {
+                // uppercase the letters
+                let upper = chunk.iter().map(|byte| {
+                    //println!(" {:?} ", byte.to_ascii_uppercase() );
+                    byte.to_ascii_uppercase()
+                })
+                    .collect::<Vec<u8>>();
+                println!("_ {:?}", std::str::from_utf8(&upper) );
+                Chunk::from(upper)
+            }));
+            println!("the body {:?}", body );
+            Box::new(future::ok(Response::new(body)))
+            },
+           (&Method::POST, "/post") => {
+               println!("{:?}", req);
+            Box::new(req.into_body().concat2().map(|b| {
+                // Parse the request body. form_urlencoded::parse
+                // always succeeds, but in general parsing may
+                // fail (for example, an invalid post of json), so
+                // returning early with BadRequest may be
+                // necessary.
+                //
+                // Warning: this is a simplified use case. In
+                // principle names can appear multiple times in a
+                // form, and the values should be rolled up into a
+                // HashMap<String, Vec<String>>. However in this
+                // example the simpler approach is sufficient.
+                let mut params = form_urlencoded::parse(b.as_ref()).into_owned().collect::<HashMap<String, String>>();
+
+                // Validate the request parameters, returning
+                // early if an invalid input is detected.
+                //println!("{:?}", &params );
+                params.insert(1.to_string(), "a".to_string());
+                {   let name = "\"name\"".to_string();
+                    println!("Getting: {:?}", params.get(&name) );
+                for (contact, number) in params.iter() {
+                    println!("Calling {}: {}", contact, number);
+                }
+}
+
+                let name = if let Some(n) = params.get("name") {
+                    println!("{:?}", &n );
+                    n
+                } else {
+                    println!("cannot parse name");
+                    return Response::builder()
+                        .status(StatusCode::UNPROCESSABLE_ENTITY)
+                        .body(MISSING.into())
+                        .unwrap();
+                };
+                let number = if let Some(n) = params.get("number") {
+                    if let Ok(v) = n.parse::<f64>() {
+                        println!("{:?}", &v );
+                        v
+                    } else {
+                        println!("cannot parse number");
+                        return Response::builder()
+                            .status(StatusCode::UNPROCESSABLE_ENTITY)
+                            .body(NOTNUMERIC.into())
+                            .unwrap();
+                    }
+                } else {
+                    println!("cannot parse anything");
+                    return Response::builder()
+                        .status(StatusCode::UNPROCESSABLE_ENTITY)
+                        .body(MISSING.into())
+                        .unwrap();
+                };
+
+                // Render the response. This will often involve
+                // calls to a database or web service, which will
+                // require creating a new stream for the response
+                // body. Since those may fail, other error
+                // responses such as InternalServiceError may be
+                // needed here, too.
+                let body = format!("Hello {}, your number is {}", name, number);
+                Response::new(body.into())
+            }))
+        },
            (&Method::GET, "/test") => {
                // build the request and change the path
                let request_uri = req.uri();
@@ -50,9 +136,7 @@ pub fn match_request(mut req: Request<Body>, client: &Client<HttpConnector>) -> 
                 let web_res_future = client.request(req);
 
 
-                Box::new(
-                    web_res_future
-                )
+                Box::new(web_res_future)
 
            },
            (&Method::GET, "/test.html") => {
@@ -176,16 +260,67 @@ pub fn match_request(mut req: Request<Body>, client: &Client<HttpConnector>) -> 
                  .unwrap()
              ))
            },
-           (&Method::GET, "/api/auth/signin") => {
+           (&Method::GET, SIGN_IN) => {
                 //let data: Vec<&str> = value.split("/").skip(1).collect();
-
+                let uri2 = req.uri().clone();
+                let method2 = req.method().clone();
+                let version2 = req.version().clone();
+                let headers = req.headers().clone();
+                let body = req.body().clone();
+                //print!("{:?}", req );
+                print!("Headers: {:?}", headers );
                Box::new(client.request(req))
                //client.request(&req)
 
            },
-           (&Method::POST, "/api/auth/signin") => {
+           (&Method::POST, SIGN_IN) => {
 
-               println!("{:?}", req.headers());
+
+               //println!("{:?}", req.body());
+               println!("{:?}", req.headers().get("authorization"));
+              // let token = req.headers().get("authorization").unwrap().to_str();
+               if let Some(token) = req.headers().get("authorization"){
+                   //print!("{:?}", token.to_str() );
+                   match token.to_str()  {
+                       Ok(x) => {
+                           let auth_header: Vec<&str> = x.split_whitespace().collect();
+                       let bytes = base64::decode(auth_header[1]).unwrap();
+                       println!("{:?}", std::str::from_utf8(&bytes));
+                   },
+                    Err(e) => print!("{} ", e)
+                };
+               };
+
+               //println!("{:?}", req.body());
+        //        let newBody = req.body_mut().map_err(|_| ()).fold(vec![], |mut acc, chunk| {
+        //          acc.extend_from_slice(&chunk);
+        //          Ok(acc)
+        //      }).and_then(|v| {
+        //     let stringify = String::from_utf8(v).unwrap();
+        //     println!("{}", stringify);
+        //     Ok(stringify)
+        // });
+            //.and_then(|v| String::from_utf8(v).map_err(|_| ()));
+
+             //let response = Response::new();
+        //let mut headers = Headers::new();
+        let body = req.body_mut().concat2().map(|chunk| {
+        let body = chunk.to_vec();
+        println!("{:?}", body);
+        body
+    });
+        //let body: &hyper::Body = &mut req.body_mut();
+
+             // body.concat2()
+             //    .and_then(|body| {
+             //        let vec = body.iter().cloned().collect();
+             //        let stringify = String::from_utf8(vec).unwrap();
+             //        println!("{}", stringify);
+             //        Ok(stringify)
+             //    }).boxed();
+                //println!("Body: \n{:?}", body.wait().unwrap());
+
+
 
            /*
                let newBody = req.body_mut().map_err(|_| ()).fold(vec![], |mut acc, chunk| {
@@ -201,7 +336,18 @@ pub fn match_request(mut req: Request<Body>, client: &Client<HttpConnector>) -> 
            */
 
 
-               Box::new(client.request(req))
+                //println!("{:?}",Box::new(client.request(req)));
+
+             // Box::new(future::ok(Response::builder()
+             //     .header(header::CONTENT_TYPE, "application/json")
+             //     .body(body)
+             //     .unwrap()))
+
+              Box::new(client.request(req))
+               // Box::new(future::ok(Response::builder()
+               //                                  .status(StatusCode::NOT_FOUND)
+               //                                  .body(Body::from(NOTFOUND))
+               //                                  .unwrap()))
                //client.request(&req)
            },
            //matching complex routes
@@ -300,7 +446,20 @@ pub fn match_request(mut req: Request<Body>, client: &Client<HttpConnector>) -> 
 //             }
 //        }
            _ => {
-               // Return 404 not found response.
+               //Return 404 not found response.
+               // let mapping = req.into_body().map(|chunk| {
+               //  chunk
+               //      .iter()
+               //      .map(|byte| print!("{:?}", &byte ); byte.to_ascii_uppercase() )
+               //      .collect::<Vec<u8>>()
+               //  });
+
+                // let reversed = req.into_body().concat2().map(move |chunk| {
+                //     let body = chunk.iter().rev().cloned().collect::<Vec<u8>>();
+                //     body
+                // });
+
+               //println!("Trying to print {:?}", mapping);
                let body = Body::from(NOTFOUND);
                Box::new(future::ok(Response::builder()
                                             .status(StatusCode::NOT_FOUND)

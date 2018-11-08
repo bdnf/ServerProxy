@@ -9,7 +9,7 @@ pub static NOTNUMERIC: &[u8] = b"Number field is not numeric";
 pub const HOMEPAGE: &'static str  = "/";
 pub const TESTPAGE: &'static str  = "/test";
 pub const LOGINPAGE: &'static str  = "/login";
-pub const SIGNINPAGE: &'static str  = "/signin";
+pub const SIGN_IN: &'static str  = "/api/auth/signin";
 pub const API_PAGE: &'static str  = "/web_api";
 
-pub const ROUTES: [&'static str; 5] = [HOMEPAGE, TESTPAGE, LOGINPAGE, SIGNINPAGE,API_PAGE];
+pub const ROUTES: [&'static str; 5] = [HOMEPAGE, TESTPAGE, LOGINPAGE, SIGN_IN, API_PAGE];

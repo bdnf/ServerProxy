@@ -18,7 +18,6 @@ extern crate futures;
 use futures::{future, Future, Stream};
 //use futures::future;
 
-
 use std::collections::HashMap;
 
 extern crate url;
@@ -29,27 +28,29 @@ use jsonwebtoken::{encode, decode,decode_header, Header, Algorithm, Validation};
 use jsonwebtoken::errors::{ErrorKind};
 
 
-#[derive(Serialize, Deserialize, Debug)]
-struct User {
-    id: String,
-    username: String,
-    profileAccessLevel: String
-}
-#[derive(Serialize, Deserialize, Debug)]
-struct User2 {
-    username: String
-}
+//#[derive(Serialize, Deserialize, Debug)]
+//struct User {
+//    id: String,
+//    username: String,
+//    profileAccessLevel: String
+//}
+//#[derive(Serialize, Deserialize, Debug)]
+//struct User2 {
+//    username: String
+//}
 
-mod models;
-mod parser;
+//mod models;
+//mod parser;
 //use crate::parser::resources::INDEX;
 use crate::parser::resources:: *;
+use crate::parser::models::*;
+mod parser;
 //mod resources;
 
 fn response_examples(mut req: Request<Body>, client: &Client<HttpConnector>, server_addr: SocketAddr)
     -> Box<Future<Item=Response<Body>, Error=hyper::Error> + Send> {
 
-    let key: String = "jhfdlksjlkfjlksdjfljsdlj".to_owned(); //jwt token secret key
+    let key: String = "jhfdlksjlkfjlksdjfljsdlj".to_owned(); //jwt token secret key as on server
 
     let server_addr_clone = server_addr.clone();
     let uri_string = format!("http://{}{}",
@@ -74,28 +75,49 @@ fn response_examples(mut req: Request<Body>, client: &Client<HttpConnector>, ser
 
    }
 
-
+use std::fs::File;
+use std::io::Read;
+use std::env;
 
 fn main() {
-    // let user = models::User {
-    //     name: "Andre".to_string(),
-    //     group: Some(models::Group {
-    //         group_name: "Admin".to_string(),
-    //         allowed_verbs: vec!["GET".to_string(), "POST".to_string(), "DELETE".to_string()],
-    //     }),
-    //     id: 10001,
-    // };
-    // let jjson = serde_json::to_string(&user).expect("Couldn't serialize config");
-    // println!("{}", jjson);
+     let user = User {
+         name: "Andre".to_string(),
+         group: Some(Group {
+             group_name: "Admin".to_string(),
+             allowed_verbs: vec!["GET".to_string(), "POST".to_string(), "DELETE".to_string()],
+         }),
+         id: 10001,
+     };
+     let jjson = serde_json::to_string(&user).expect("Couldn't serialize config");
+     println!("{}", jjson);
 
     //ROUTES.iter().map(|&x| { print!("{:?}", x );});
     for (i,r) in ROUTES.iter().enumerate() {
         print!("{:?} ", r );
 
     }
+//    let rbac = RBAC::read_config_from_file("config.json");
+//
+//    match rbac {
+//        Ok(x) => println!("Read json file is: {:?}", x.roles),
+//        Err(_) => println!("Err"),
+//    }
+
+    let mut file = File::open("config.json").unwrap();
+    let mut buff = String::new();
+    file.read_to_string(&mut buff).unwrap();
+
+    let foo: RBAC = serde_json::from_str(&buff).unwrap();
+    println!("Name: {:?}", foo.roles);
+    println!("Name: {:?}", foo.grants);
+    let actions: Option<&Vec<String>> = foo.grants.get("admin");//.ok_or(false);
+    let res = match actions {
+        Some(x) => {x.contains(&"read".to_string()); true},
+        None => false,
+    };
+    println!("{:?}", res);
 
     //println!("{}", ROUTES.iter().fold(String::new(), |acc, &arg| acc + arg));
-
 
 
     pretty_env_logger::init();
@@ -106,7 +128,7 @@ fn main() {
 
 
     hyper::rt::run(future::lazy(move || {
-    let client_main = Client::new();
+    let client_main: Client<HttpConnector, Body> = Client::new();
 
     // new_service is run for each connection, creating a 'service'
     // to handle requests for that specific connection.
@@ -178,24 +200,24 @@ fn main() {
         .serve(new_service)
         .map_err(|e| eprintln!("server error: {}", e));
 
+        /*
+              let my_claims = User2 {
 
-        let my_claims = User2 {
+                    username: "testname8".to_owned(),
 
-              username: "testname8".to_owned(),
+                };
 
-          };
-          /*
-         ISSUE: panicked at 'called `Result::unwrap()` on an `Err` value: Error(ExpiredSignature)'
-        let key = "secret".to_owned();
+               ISSUE: panicked at 'called `Result::unwrap()` on an `Err` value: Error(ExpiredSignature)'
+              let key = "secret".to_owned();
 
-        let token = encode(&Header::default(), &my_claims, key.as_ref()).unwrap();
-        println!("{:?}", token);
+              let token = encode(&Header::default(), &my_claims, key.as_ref()).unwrap();
+              println!("{:?}", token);
 
-        let token_data = decode::<User2>(&token, key.as_ref(), &Validation::default()).unwrap();
-        //let token_data = decode_header(&token);
-        println!("{:?}", token_data);
-        //println!("{:?}", token_data.header);
-        */
+              let token_data = decode::<User2>(&token, key.as_ref(), &Validation::default()).unwrap();
+              //let token_data = decode_header(&token);
+              println!("{:?}", token_data);
+              //println!("{:?}", token_data.header);
+         */
 
     println!("Listening on http://{}", in_addr);
     println!("Proxying on http://{}", server_addr);
@@ -203,3 +225,16 @@ fn main() {
     server
     }));
 }
+
+/*
+if the ROUTE is known -> match the route and parse the request
+else default page
+
+if extracted user credentials ->
+    connect to MongoDB
+
+    compare entries in DB
+    if exist -> pass request
+    else allow only Get requests
+
+*/

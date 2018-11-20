@@ -1,5 +1,8 @@
 
 #Initialize new express app
+docker build -t node_server -f Dockerfile.server .
+docker run --name app -it node_server
+
 npm init  
 #install dependensies
 npm install express bcrypt body-parser mongoose jsonwebtoken cors dotenv
@@ -18,7 +21,7 @@ http POST localhost:1331/api/users/{}/messages "Authorization:Bearer {}" text="{
 #read all messages
 http GET localhost:1331/api/messages "Authorization:Bearer {}" || http GET localhost:1331/api/messages/showall
 #test route for reading only messages
-http GET localhost:1331/test
+http GET localhost:1331/test # list of all entries
 #change credentials
 http GET localhost:1331/user/{}
 http PUT localhost:1331/user/{} profileAccessLevel=admin

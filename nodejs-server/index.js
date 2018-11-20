@@ -23,8 +23,11 @@ app.use(
   messagesRoutes
 );
 
+app.use(express.static(__dirname + "/views"));
+
 app.get("/", function(req, res){
-  res.send("<h1>Hello from the HOTEL TestApp</h1>")
+  console.log(req.headers);
+  res.sendFile("index.html")
 })
 
 app.get("/test", helpers.getHotels)

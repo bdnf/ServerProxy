@@ -21,19 +21,139 @@ fn render_error_page(msg:  &'static [u8]) -> Box<Future<Item=Response<Body>, Err
     .unwrap()))
 }
 
+fn parse_body(req: Request<Body>) -> Box<Future<Item=Response<Body>, Error=hyper::Error> + Send> {
+    Box::new(req.into_body().concat2().map(|b| {
+        // Parse the request body. form_urlencoded::parse
+        // always succeeds, but in general parsing may
+        // fail (for example, an invalid post of json), so
+        // returning early with BadRequest may be
+        // necessary.
+        //
+        // Warning: this is a simplified use case. In
+        // principle names can appear multiple times in a
+        // form, and the values should be rolled up into a
+        // HashMap<String, Vec<String>>. However in this
+        // example the simpler approach is sufficient.
+        let mut params = form_urlencoded::parse(b.as_ref()).into_owned().collect::<HashMap<String, String>>();
+
+        // Validate the request parameters, returning
+        // early if an invalid input is detected.
+        //println!("{:?}", &params );
+        params.insert(1.to_string(), "a".to_string());
+        {
+            let name = "\"username\"".to_string();
+            println!("Getting: {:?}", params.get(&name) );
+            for (contact, number) in params.iter() {
+                println!("Calling {}: {}", contact, number);
+            }
+        }
+
+        let name = if let Some(n) = params.get("name") {
+            println!("{:?}", &n );
+            n
+        } else {
+            println!("cannot parse name");
+            return Response::builder()
+                .status(StatusCode::UNPROCESSABLE_ENTITY)
+                .body(MISSING.into())
+                .unwrap();
+        };
+        let number = if let Some(n) = params.get("number") {
+            if let Ok(v) = n.parse::<f64>() {
+                println!("{:?}", &v );
+                v
+            } else {
+                println!("cannot parse number");
+                return Response::builder()
+                    .status(StatusCode::UNPROCESSABLE_ENTITY)
+                    .body(NOTNUMERIC.into())
+                    .unwrap();
+            }
+        } else {
+            println!("cannot parse anything");
+            return Response::builder()
+                .status(StatusCode::UNPROCESSABLE_ENTITY)
+                .body(MISSING.into())
+                .unwrap();
+        };
+
+        // Render the response. This will often involve
+        // calls to a database or web service, which will
+        // require creating a new stream for the response
+        // body. Since those may fail, other error
+        // responses such as InternalServiceError may be
+        // needed here, too.
+        let body = format!("Hello {}, your number is {}", name, number);
+        Response::new(body.into())
+    }))
+}
+
+
+fn intercept(req: Request<Body>, client: &Client<HttpConnector>) -> Box<Future<Item=Response<Body>, Error=hyper::Error> + Send> {
+
+    //let incoming = &req.body().clone();
+    let (parts, rbody) = req.into_parts();
+    let body: Body = Body::wrap_stream(rbody.map(|chunk| {
+        // Parse the request body. form_urlencoded::parse
+        // always succeeds, but in general parsing may
+        // fail (for example, an invalid post of json), so
+        // returning early with BadRequest may be
+        // necessary.
+        //
+        // Warning: this is a simplified use case. In
+        // principle names can appear multiple times in a
+        // form, and the values should be rolled up into a
+        // HashMap<String, Vec<String>>. However in this
+        // example the simpler approach is sufficient.
+        //let mut params = form_urlencoded::parse(chunk.as_ref()).into_owned().collect::<Vec<u8>>()();
+        let upper = chunk.into_iter().collect::<Vec<u8>>();
+        let mut intercepted = String::from_utf8_lossy(&upper).into_owned();
+
+        //incoming = intercepted.clone();
+        intercepted.retain(|c| (c != '"') & (c != '{') && (c != '}') && (c != ' ') );
+        println!("_ {:?}", intercepted);
+        println!("_ {:?}", String::from_utf8_lossy(&upper).into_owned() );
+
+        let v: Vec<&str> = intercepted.split(',').collect();
+        println!("Vector is : {:?}", v);
+
+        //let map: HasMap<String, String> =  HashMap::new();
+        let v2 = v.into_iter()
+                .map(|kv| kv.split(':').collect::<Vec<&str>>())
+                .map(|vec| { (vec[0], vec[1])  })
+                .collect::<HashMap<_, _>>();
+            println!("Vector? is : {:?}", v2);
+        println!("Vector? is : {:?}", v2.get("email"));
+        Chunk::from("{\"username\": \"testname8\", \"password\": \"paswrd\", \"email\": \"testm8@email.com\"}")
+    }));
+        // Validate the request parameters, returning
+        // early if an invalid input is detected.
+       // println!("{:?}", &params );
+    //println!("Vector? is : {:?}", incoming);
+        //let body = format!("Hello {}, your number is {}", name, number);
+    //let newres = Request::new(body);
+    println!("sending request");
+
+    let req = Request::from_parts(parts, body);
+    Box::new(client.request(
+                                        req
+    ))
+
+}
+
 pub fn match_request(mut req: Request<Body>, client: &Client<HttpConnector>) -> Box<Future<Item=Response<Body>, Error=hyper::Error> + Send> {
 
     // check if req.uri().path() is in ROUTES
     if ROUTES.contains(&req.uri().path()) {
     		println!("The route {} is known.", &req.uri().path());
-		}
-    // else {
-    //     println!("The route {} is not known.", &req.uri().path());
-    //     return Box::new(future::ok(Response::builder()
-    //                                  .status(StatusCode::NOT_FOUND)
-    //                                  .body(Body::from(NOTFOUND))
-    //                                  .unwrap()))
-    // }
+    }
+//        else {
+//         println!("The route {} is not known.", &req.uri().path());
+//         return Box::new(future::ok(Response::builder()
+//                                      .status(StatusCode::NOT_FOUND)
+//                                      .body(Body::from(NOTFOUND))
+//                                      .unwrap()))
+//     }
     //if ok then
     match (req.method(), req.uri().path()) {
 
@@ -60,70 +180,10 @@ pub fn match_request(mut req: Request<Body>, client: &Client<HttpConnector>) -> 
         },
         (&Method::POST, "/post") => {
                println!("{:?}", req);
-            Box::new(req.into_body().concat2().map(|b| {
-                // Parse the request body. form_urlencoded::parse
-                // always succeeds, but in general parsing may
-                // fail (for example, an invalid post of json), so
-                // returning early with BadRequest may be
-                // necessary.
-                //
-                // Warning: this is a simplified use case. In
-                // principle names can appear multiple times in a
-                // form, and the values should be rolled up into a
-                // HashMap<String, Vec<String>>. However in this
-                // example the simpler approach is sufficient.
-                let mut params = form_urlencoded::parse(b.as_ref()).into_owned().collect::<HashMap<String, String>>();
 
-                // Validate the request parameters, returning
-                // early if an invalid input is detected.
-                //println!("{:?}", &params );
-                params.insert(1.to_string(), "a".to_string());
-                {
-                    let name = "\"name\"".to_string();
-                        println!("Getting: {:?}", params.get(&name) );
-                    for (contact, number) in params.iter() {
-                        println!("Calling {}: {}", contact, number);
-                    }
-                }
+                parse_body(req)
 
-                let name = if let Some(n) = params.get("name") {
-                    println!("{:?}", &n );
-                    n
-                } else {
-                    println!("cannot parse name");
-                    return Response::builder()
-                        .status(StatusCode::UNPROCESSABLE_ENTITY)
-                        .body(MISSING.into())
-                        .unwrap();
-                };
-                let number = if let Some(n) = params.get("number") {
-                    if let Ok(v) = n.parse::<f64>() {
-                        println!("{:?}", &v );
-                        v
-                    } else {
-                        println!("cannot parse number");
-                        return Response::builder()
-                            .status(StatusCode::UNPROCESSABLE_ENTITY)
-                            .body(NOTNUMERIC.into())
-                            .unwrap();
-                    }
-                } else {
-                    println!("cannot parse anything");
-                    return Response::builder()
-                        .status(StatusCode::UNPROCESSABLE_ENTITY)
-                        .body(MISSING.into())
-                        .unwrap();
-                };
 
-                // Render the response. This will often involve
-                // calls to a database or web service, which will
-                // require creating a new stream for the response
-                // body. Since those may fail, other error
-                // responses such as InternalServiceError may be
-                // needed here, too.
-                let body = format!("Hello {}, your number is {}", name, number);
-                Response::new(body.into())
-            }))
         },
         (&Method::GET, "/test") => {
                // build the request and change the path
@@ -233,8 +293,9 @@ pub fn match_request(mut req: Request<Body>, client: &Client<HttpConnector>) -> 
           (&Method::POST, SIGN_IN) => {
 
 
-               //println!("{:?}", req.body());
-               println!("{:?}", req.headers().get("authorization"));
+               println!("{:?}", req);
+               println!("Requested route {:?}", SIGN_IN);
+               println!("Auth Headers are: {:?}", req.headers().get("authorization"));
               // let token = req.headers().get("authorization").unwrap().to_str();
                if let Some(token) = req.headers().get("authorization"){
                    //print!("{:?}", token.to_str() );
@@ -247,7 +308,8 @@ pub fn match_request(mut req: Request<Body>, client: &Client<HttpConnector>) -> 
                     Err(e) => print!("{} ", e)
                 };
                };
-
+                println!("Parsing the incercepted request");
+              intercept(req, client)
         //println!("{:?}", req.body());
         //        let newBody = req.body_mut().map_err(|_| ()).fold(vec![], |mut acc, chunk| {
         //          acc.extend_from_slice(&chunk);
@@ -261,11 +323,15 @@ pub fn match_request(mut req: Request<Body>, client: &Client<HttpConnector>) -> 
 
              //let response = Response::new();
         //let mut headers = Headers::new();
-        let body = req.body_mut().concat2().map(|chunk| {
-        let body = chunk.to_vec();
-        println!("{:?}", body);
-        body
-    });
+
+  //This works
+//        let body = req.body_mut().concat2().map(|chunk| {
+//        let body = chunk.to_vec();
+//        println!("Body is: {:?}", body);
+//        body
+//    });
+
+
         //let body: &hyper::Body = &mut req.body_mut();
 
              // body.concat2()
@@ -296,7 +362,7 @@ pub fn match_request(mut req: Request<Body>, client: &Client<HttpConnector>) -> 
              //     .body(body)
              //     .unwrap()))
 
-              Box::new(client.request(req))
+              //Box::new(client.request(req))
         },
         //matching over complex UNKNOWN routes
         (&Method::GET, value) => {

@@ -111,11 +111,14 @@ fn main() {
     println!("Name: {:?}", foo.roles);
     println!("Name: {:?}", foo.grants);
     let actions: Option<&Vec<String>> = foo.grants.get("admin");//.ok_or(false);
+    println!("Actions are: {:?}", actions);
     let res = match actions {
-        Some(x) => {x.contains(&"read".to_string()); true},
+        Some(x) => x.contains(&"Read".to_string()),
         None => false,
     };
-    println!("{:?}", res);
+
+    //println!("{:?}" , foo.check_access("121", "admin", "Create"));
+    //println!("{:?}", res);
 
     //println!("{}", ROUTES.iter().fold(String::new(), |acc, &arg| acc + arg));
 

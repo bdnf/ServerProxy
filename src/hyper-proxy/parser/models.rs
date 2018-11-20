@@ -50,6 +50,7 @@ pub struct RBAC {
     pub permissions: Vec<String>,
     //pub grants: Actions,
     pub grants: HashMap<String, Vec<String>>,
+    pub allowed_admins: HashSet<String>,
 
 }
 
@@ -72,12 +73,17 @@ impl RBAC {
 
     pub fn check_access(&self, user_id: &'static str, user_status: &'static str, action: &'static str ) -> bool {
 
-        let actions = self.grants.get(user_status);//.ok_or(false);
-        let res = match actions {
+        let actions: Option<&Vec<String>> = self.grants.get(user_status);//.ok_or(false);
+        //println!("Actions are: {:?}", actions);
+        match actions {
             Some(x) => x.contains(&action.to_string()),
             None => false,
-        };
-        res
+        }
+
+        //println!("{:?}", actions);
+
+        //println!("{:?}", res);
+        //res
 
     }
 
@@ -87,19 +93,25 @@ impl RBAC {
         false
     }
 
-    pub fn add_user_roles(user_id: &'static str, token: &'static str, role:&'static str) -> UserRole{
+    pub fn add_user_roles(&mut self, user_id: &'static str, token: &'static str, role:&'static str) -> (){
         //check id
         //check token
 
-        //and update
-        UserRole{
-            id: user_id.to_string(),
-            token: Some(token.to_string()),
-            role: Some(role.to_string())
+        if (role.to_ascii_lowercase() == "admin") {
+            self.allowed_admins.insert(user_id.to_string());
+            println!("User {} added as admin successfully", user_id);
         }
+
+        //and update
+//        UserRole{
+//            id: user_id.to_string(),
+//            token: Some(token.to_string()),
+//            role: Some(role.to_string())
+//        }
     }
 
-    pub fn is_allowed(token:&'static str) -> bool {
+    pub fn is_allowed(&self, user_id: &'static str, action: &'static str) -> bool {
+        //if .get(name) if user.token == token
 
         false
     }
